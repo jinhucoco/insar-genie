@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Merge NASADEM/SRTM hgt tiles into one ENVI-format DEM (.dat + .hdr).
 
 SARscape DEM pre-processing step 1 (see run_dem.bat):
@@ -15,6 +14,7 @@ Tiles are placed by their (lat, lon) corner: each 1x1 deg tile keeps its
 geographic position; tiles are merged into one raster. hgt is big-endian
 int16 (3601x3601), output is little-endian float32 with an ENVI .hdr.
 """
+
 import argparse
 import glob
 import os
@@ -66,8 +66,8 @@ def main():
     lon_idx = set()
     for f in files:
         lat_max, lon_min, vals = parse_hgt(f)
-        li = int(round(lat_max))  # row key: tile covering [lat, lat+1]
-        oi = int(round(lon_min))
+        li = round(lat_max)  # row key: tile covering [lat, lat+1]
+        oi = round(lon_min)
         if (li, oi) in grid:
             sys.exit(f"duplicate tile: {f}")
         grid[(li, oi)] = (f, vals)
@@ -96,7 +96,7 @@ def main():
     hdr = os.path.splitext(args.output)[0] + ".hdr"
     with open(hdr, "w", encoding="utf-8") as h:
         h.write("ENVI\n")
-        h.write(f"description = {{merged NASADEM/SRTM hgt}}\n")
+        h.write("description = {merged NASADEM/SRTM hgt}\n")
         h.write(f"samples = {n_cols}\n")
         h.write(f"lines = {n_rows}\n")
         h.write("bands = 1\n")
@@ -110,9 +110,11 @@ def main():
             f"{lon_min:.6f}, {lat_max:.6f}, {PIX:.8f}, {PIX:.8f}, WGS-84, units=Degrees}}"
             "\n"
         )
-        h.write("coordinate system string = {GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\","
-                "SPHEROID[\"WGS 84\",6378137,298.257223563]],PRIMEM[\"Greenwich\",0],"
-                "UNIT[\"degree\",0.0174532925199433]]}\n")
+        h.write(
+            'coordinate system string = {GEOGCS["WGS 84",DATUM["WGS_1984",'
+            'SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],'
+            'UNIT["degree",0.0174532925199433]]}\n'
+        )
     print(f"wrote {args.output} + {hdr}")
 
 

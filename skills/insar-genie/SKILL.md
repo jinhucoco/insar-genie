@@ -1,14 +1,51 @@
 ---
 name: insar-genie
 description: >
-  SBAS-InSAR 全链路 AI 技能：从 Sentinel-1 数据下载、配套数据（DEM/GACOS/POEORB）
+  SBAS-InSAR 全链路 AI 技能：从 Sentinel-1 SLC 数据下载、配套数据（DEM/GACOS/POEORB）
   获取，到 SARscape 实验参数确认与批处理执行，再到守护监控，全程 AI 与用户对话交互、
-  AI 自动执行。用户只需说出需求（提供时间范围 + shp/kml 矢量 + 极化），AI 自动完成。
-  触发词：“从ASF下载哨兵数据”、“下载Sentinel-1”、“ASF下载S1”、“开始SBAS实验”、
-  “跑SBAS”、“参数怎么设”、“实验进展如何”。
+  AI 自动执行。只要用户提到 insar、SBAS、实验、哨兵、Sentinel-1、干涉、形变、沉降、
+  SARscape、GACOS、POEORB、DEM 等领域关键词就会触发；用户没给出明确任务时，
+  先列插件功能菜单问用户想做哪一件。
+  触发词：insar、SBAS、实验、哨兵、Sentinel-1、干涉、形变、沉降、SARscape、GACOS、
+  POEORB、DEM，以及“从ASF下载哨兵数据”、“开始SBAS实验”、“跑SBAS”、“实验进展如何”。
 ---
 
 # SBAS-InSAR 全链路 AI 技能
+
+## 零号动作：关键词调度（先说功能菜单，再干活）
+
+**用户只提到领域关键词（`insar` / `SBAS` / `实验` / `哨兵` / `干涉` / `形变` / `SARscape` /
+`GACOS` / `POEORB` / `DEM` …）、没有给出明确任务时，不要猜、不要反问细节——
+第一条回复必须先输出下面的功能菜单，最后问一句「你想做哪一件？」。**
+
+| 情况 | 例子 | 动作 |
+|------|------|------|
+| 裸关键词，无明确任务 | 「insar」「SBAS」「实验」 | **先列功能菜单 + 问想做哪一件** |
+| 已给出明确任务 | 「实验进展如何」「跑SBAS，区域古浪.shp，2020-2025」「下载配套数据」「就用推荐值」 | 跳过菜单，直接干活 |
+| 与 insar 无关 | 「帮我写个正则」 | 完全不触发 |
+
+「明确任务」的判据（命中任一即视为明确）：含**文件/路径**（`.shp .kml .csv .ztd .hgt .dat .env`
+等、`D:\…`）｜含**日期**（`20240101` / `2024-01-01` / `2024年`）｜含**动作词**（下载 / 导入 / 跑 /
+执行 / 开始 / 继续 / 重跑 / 补跑 / 接着 / 查看 / 查一下 / 看一下 / 进展 / 进度 / 状态 / 结果 /
+报告 / 注册 / 配置 / 设置 / 检查 / 自检 / 确认 / 就用 / 按推荐 / 没问题 / 怎么设 / 停止 / 取消 /
+重来 / 恢复 / 汇报）。
+
+### 功能菜单（8 项，按流程排序，编号与措辞照抄）
+
+1. 下载 SLC 主数据 —— 从 ASF 搜索 / 校验 / 下载 Sentinel-1 SLC（同轨 + 逐时相覆盖保证）
+2. 下载配套数据 —— POEORB 精密轨道 / GACOS 大气延迟 / NASADEM
+3. SLC 批量导入 —— 按时相分组导入 SARscape（双帧自动拼接，支持续跑 / AOI 裁剪）
+4. 参数确认 + 跑 SBAS 全流程 —— 地形识别 → 5 卡参数逐项确认 → 连接图 → 干涉 → 反演1 → 反演2 → 地理编码
+5. 单步执行 / 补跑 —— 只跑某一步（连接图 / 干涉 / DEM / GACOS 导入 / 反演 / 地理编码）
+6. 查实验进展 —— 当前步骤进度 / 实验列表 / 异常与停滞诊断
+7. 环境自检 / 账号配置 —— ENVI + SARscape 探测、config.env 生成、Earthdata 与 GACOS 邮箱配置
+8. DEM 预处理 —— 分幅拼接 → ENVI 导入（Geoidal DEM）→ 去大地水准面，产出可用 DEM
+
+> 这份菜单有两个入口，内容必须一致：插件宿主在 `agent/pre-step` 命中关键词时会
+> **直接把同一份菜单注入给 AI**（不依赖模型自己想起本技能），本表是技能侧的同一份定义。
+> 两处由 `test/dispatch.test.ts` 逐条断言强制一致（改一处必须改两处）。
+>
+> 提醒话术：菜单不是结尾，问完等用户选，**不要在菜单后面顺手把活干了**。
 
 ## 定位（AI 交互执行原则）
 
@@ -31,7 +68,10 @@ description: >
 
 - 用户需要从 ASF 下载特定时间范围、特定区域的 Sentinel-1 数据
 - 用户要开展 SBAS-InSAR 实验（下载 → 配套数据 → 参数确认 → 批处理 → 监控）
-- 触发词：“从 ASF 下载哨兵数据”、“下载 Sentinel-1”、“ASF 下载 S1”、“开始 SBAS 实验”、“跑 SBAS”、“参数怎么设”、“实验进展如何”
+- 触发词（**裸关键词也算**）：`insar`、`SBAS`、`实验`、`哨兵`、`Sentinel-1`、`干涉`、`形变`、
+  `沉降`、`SARscape`、`GACOS`、`POEORB`、`DEM`，以及“从 ASF 下载哨兵数据”、“开始 SBAS 实验”、
+  “跑 SBAS”、“实验进展如何”
+- 只说裸关键词、没给明确任务时 → 先走上面的「零号动作」列功能菜单问用户想做哪一件
 
 **真实触发示例**（甘肃古浪实验）：
 
@@ -395,6 +435,8 @@ python scripts/multi_download.py \
 | 搜索结果为空 | 扩大时间范围或检查 AOI 坐标是否为 WGS84 |
 | API 报错 | 检查网络/代理；ASF API 偶发限流，稍后重试 |
 | shp 报错 | 确认 shp 是 WGS84（经纬度）坐标系 |
+| **搜索 VV 返回 0 结果（D6）** | CMR 中该区域 SLC 极化属性是 `VV+VH`（1SDV 双极化），`--pol VV` 匹配不到。改用 `--pol VV+VH` 下载，SARscape 导入用 `ONLY_VV_POL` 取 VV。 |
+| **批处理 Execute 静默失败（D5）** | 查 `<tmp>/work/Process.trace` 的 `[SARS_LOG]`/`[CORE][!]`/`EC=70000` 行；sarbatch_*.txt 只有 NLS 警告不可信（D8）。`SARSCAPE_LIB` 必须含 `\auxiliary` 子路径。 |
 
 ### ⚠️ GACOS 实操坑（2026-08-17/18 民勤实测沉淀）
 
@@ -415,6 +457,17 @@ login/logout，短间隔几十次完整登录触发 163 风控，返回 `SELECT 
 **诊断提示**：IMAP SELECT 必须在 login 之后（imaplib 状态机）。
 
 **④ GACOS 结果用 ImportGACOS 导入后才可用于干涉**（见"配套数据必须处理"章节）。
+
+**⑤ GACOS 批量导入需 .rsc 配套（D3）**：`run_gacos_bulk.bat` 的 `ImportGACOS`
+输入 `YYYYMMDD.ztd` 时必须同目录存在 `YYYYMMDD.ztd.rsc`（下载产物全套含 .ztd/.rsc/预览图）。
+只复制 .ztd 会报 `EC=70000 [WRONG INPUT PARAMETERS] theArg=xxx.ztd.rsc`。批量导入前确保
+`<sar>/gacos/` 下 .ztd 与 .rsc 数量一致。
+
+**⑥ GACOS 批处理产物无 `_geo` 后缀（D14，实测中）**：批量导入产物命名 `20200104`
+（无 `_geo`），GUI 产物是 `20200104_geo`（SARscape 对 geocoded 产物的命名约定）。两者
+格式一致（product_type=GACOS ZDT、GeocodedImage=OK、ENVI float32 WGS84），SARscape
+按 .sml/.hdr 识别而非文件名后缀；但 WAVER_VAPOUR_FILE_LIST 引用是否严格要求 `_geo`
+待干涉实测确认（若严格要求，软链/重命名补后缀即可，无需重导）。
 
 ### ⚠️ config.env 行尾必须是 CRLF（2026-08-18 民勤实测）
 
@@ -564,6 +617,20 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 5. 每步执行前**重复**此流程（不止第 2 步，每步都要确认）
 6. 根据地形和位置**主动给推荐**，不能只罗列参数
 
+### insar_pipeline 两阶段确认后跑（B1）
+
+调用 `insar_pipeline` 是**两阶段**：
+
+1. **阶段 1（默认，不给 `confirmed`）**：`insar_pipeline(experimentId)` → 生成本文档的 5 卡参数确认表（`pipeline.cards`，每参数标 **默认值/推荐值/理由**）+ 写入 config.env，**返回 `needsConfirm: true` 但不执行**。client 会展示这 5 卡。
+2. **阶段 2（用户确认后）**：AI 拿到用户「没问题/全部确认」的对话确认后，**用 `insar_pipeline(experimentId, confirmed: true)` 重新调用**才真正执行（连接图→干涉→反演1→反演2→地理编码，含连接图扩基线门 + 每步后参数一致性校验门）。
+
+> 用户只需在对话里确认（如「都用推荐值」「确认」），AI 据此发起以 `confirmed: true` 的第二阶段调用。**参数确认一定要先发生，绝不直接跑。**
+
+### 实验目录（B3）
+
+`insar_pipeline` 的实验目录优先从 **settings 侧边栏的 `experimentDir`** 读取；未配置则回退到实验记录 `exp.dir`。
+> 注意：该实验目录需包含 `bat/` 子目录（内置五步 bat + `config.env`），`insar_pipeline` 用其定位 `bat/<step>/<bat>` 并写 `config.env`（bat 读 `%~dp0..\\..\config.env`）。若用自定义实验目录，需先复制插件的 `assets/experiment` 内容到该目录。
+
 ### 提醒话术模板
 
 ```
@@ -605,6 +672,7 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 | 第 4 步 反演2 | `experiment/bat/03_inversion/run_inv2.bat` | 「开始第 4 步」 |
 | 第 5 步 地理编码 | `experiment/bat/04_geocode/run_geocode.bat` | 「开始第 5 步」 |
 | 第 0 步 SLC 导入 | `experiment/bat/00_import/run_import_slc.bat`（ImportSentinel1Format，支持 ROI 裁剪/极化可选，verify 模式校验）| 「导入数据」 |
+| **SLC 批量导入（推荐）** | **`insar_import_bulk` 工具**（按时相分组驱动 `import_slc_bulk.py`；双帧时相同日 2 景一起导入 → msc 拼接，单帧不拼 → slc_list；支持续跑/AOI/单日期）| 「批量导入 SLC」 |
 | DEM 预处理 | `experiment/bat/03_data_prep/run_dem.bat`（三步：merge_hgt_dem.py → ImportEnviOriginal → ToolsGeoid）+ `experiment/tools/merge_hgt_dem.py`（config.env 配 DEM_RAW/DEM_DAT/DEM_ENVI/DEM_FINAL）| 「处理 DEM」 |
 
 AI 执行要点：

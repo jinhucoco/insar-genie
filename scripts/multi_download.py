@@ -236,7 +236,10 @@ def multi_download(session, url, dest, total_size, threads, logfile, expected_md
             continue
         done_parts.append(parts[i])
     if failed_parts:
-        log(f"  [片{failed_parts} 失败] 保留 {len(done_parts)} 个已完成分片,下次续传补下(不整文件作废)", logfile)
+        log(
+            f"  [片{failed_parts} 失败] 保留 {len(done_parts)} 个已完成分片,下次续传补下(不整文件作废)",
+            logfile,
+        )
         # 已成功分片仍可合并? 不——缺片则整文件不完整;保持 .part 供续传,
         # 但为不占额外空间且续传快,把已完成部分尝试合并到 dest 的临时区? 保持简单:
         # 直接返回失败,dest 不存在,parts 保留(断点续传靠 download_chunk 的 existing>0 跳过)。
@@ -472,7 +475,10 @@ def main():
             if consec_fail >= 2:
                 eff_threads = max(1, args.threads // (2 ** min(consec_fail // 2, 3)))
             if eff_threads != args.threads:
-                log(f"[DEGRADE] 连续失败 {consec_fail} 次，线程 {args.threads}→{eff_threads}", logfile)
+                log(
+                    f"[DEGRADE] 连续失败 {consec_fail} 次，线程 {args.threads}→{eff_threads}",
+                    logfile,
+                )
             ok_flag, size = multi_download(
                 session, url, dest, total, eff_threads, logfile, expected_md5
             )
